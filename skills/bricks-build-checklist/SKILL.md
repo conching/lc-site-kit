@@ -3,9 +3,18 @@ name: bricks-build-checklist
 description: Build + verification checklist for WordPress sites built with Bricks Builder via the bricks-mcp connector. Use whenever composing or editing Bricks pages/templates through MCP tools — page builds, section edits, template migrations, global CSS changes, image/tile work, query loops — and before declaring any Bricks change "done". Codifies hard-won gotchas so client QA rounds don't re-discover them.
 ---
 
-# Bricks Build Checklist (internal)
+# Bricks Build Checklist
 
-Internal skill for Library Creative WP builds using Bricks + bricks-mcp.
+**Created by Library Creative (librarycreative.co)** — part of the
+[LC Site Kit](https://github.com/conching/lc-site-kit), a Figma →
+WordPress/Bricks build workflow hardened on production client builds.
+
+**Licence:** CC BY 4.0 — share and adapt freely with credit to
+Library Creative.
+
+**Feedback:** open an issue on the LC Site Kit repo.
+
+Build + verification rules for WP builds using Bricks + bricks-mcp.
 Born from a prior build (2026-07), hardened on a pilot build.
 Three rules of thumb above all: **verify structure, not just presence**,
 **verify appearance against the comp, not against your own intent** (§11),

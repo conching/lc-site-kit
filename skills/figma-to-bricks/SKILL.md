@@ -3,9 +3,18 @@ name: figma-to-bricks
 description: Ingest a Figma design file and produce everything needed to start a Bricks build — extracted design tokens, per-page section inventories, reusable-section/template candidates, an asset manifest, and a generated WordPress build plan. Use at project kickoff when handed a figma.com/design URL or file, or on "ingest this Figma design", "start the build from Figma", "extract tokens from the design", "scope this design for Bricks". Drives the Figma MCP (read side) and lc-bricks-mcp (write side); hands off page builds to bricks-build-checklist.
 ---
 
-# Figma → Bricks Ingestion (internal)
+# Figma → Bricks Ingestion
 
-Turns a Figma file into a build-ready package for a Library Creative
+**Created by Library Creative (librarycreative.co)** — part of the
+[LC Site Kit](https://github.com/conching/lc-site-kit), a Figma →
+WordPress/Bricks build workflow hardened on production client builds.
+
+**Licence:** CC BY 4.0 — share and adapt freely with credit to
+Library Creative.
+
+**Feedback:** open an issue on the LC Site Kit repo.
+
+Turns a Figma file into a build-ready package for a
 Bricks build. Runs as sequenced phases; each phase emits a deliverable.
 This skill OWNS ingestion (design → plan). It does NOT build pages — page
 composition + verification live in **bricks-build-checklist**; hand off, do
