@@ -1,0 +1,6 @@
+[submodule "plugins/lc-core"]
+	path = plugins/lc-core
+	url = https://github.com/conching/lc-core.git
+[submodule "plugins/lc-bricks-mcp"]
+	path = plugins/lc-bricks-mcp
+	url = https://github.com/conching/lc-bricks-mcp.git
