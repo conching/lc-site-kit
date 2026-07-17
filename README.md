@@ -74,7 +74,7 @@ Claude account, and upload the two `skills/` folders as capabilities.
 ```bash
 git clone --recurse-submodules https://github.com/conching/lc-site-kit.git
 cd lc-site-kit
-./bin/make-audit-bundle.sh    # → audit-bundle.md, one file, everything in it
+./bin/make-audit-bundle.sh    # → audit-bundle.md, all first-party review material
 ```
 
 **For using the skills elsewhere** — the two `skills/` folders are
