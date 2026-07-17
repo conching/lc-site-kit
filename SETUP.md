@@ -12,8 +12,11 @@ your skill uploads, your MCP connections, and your site credentials.
    - `lc-core-<version>.zip`
    - `lc-bricks-mcp-<version>.zip`
 3. Verify the sha256 of any downloaded zip against the published checksum.
-4. Configure lc-core's per-site layer: copy `config/example-config.php` →
-   `config/site-config.php` in the plugin and fill in the project values.
+4. Configure lc-core's per-site layer: copy `config/example-config.php` into
+   the project's own plugin or mu-plugin, rename its project prefix, and fill
+   in the project values. Keep site code outside lc-core so generic ZIP updates
+   remain replaceable. A bundled `config/site-config.php` is supported only for
+   deliberately site-specific release artifacts with their own update process.
 
 ## 2. Credentials (once per person, per site)
 
