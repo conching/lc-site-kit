@@ -39,7 +39,7 @@ done
 # Plugin source (submodules must be initialized)
 for plugin in lc-core lc-bricks-mcp; do
   P="$ROOT/plugins/$plugin"
-  if [ ! -f "$P"/*.php ] && [ -z "$(ls -A "$P" 2>/dev/null)" ]; then
+  if [ -z "$(ls -A "$P" 2>/dev/null)" ]; then
     echo "WARN: plugins/$plugin is empty — run: git submodule update --init" >&2
     continue
   fi
