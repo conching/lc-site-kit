@@ -102,18 +102,15 @@ ones, and the next review nearly rebased onto the wrong version because
 side alone. The fix is mechanical: diff all three copies at the start of
 every review, and state explicitly which one is the base.
 
-## Still unresolved
+## Where the internal copies live
 
-The **internal** copies have no version control. They live in dated folders
-in cloud storage, which preserves history by accident rather than by
-design. Options, in rough order of effort:
+The client-named copies are versioned in a **private** sibling repo,
+`lc-site-kit-internal`. This repo is its sanitized public downstream —
+content flows internal → public, never the reverse.
 
-- A private sibling repo (`lc-site-kit-internal`) holding only the
-  client-named `skills/`, with this repo as its public downstream.
-- A private repo holding both, with a sanitizing export step that pushes to
-  this one.
-- Accept the dated-folder convention and rely on the keep-two rule.
+The private repo also holds the live leak-audit pattern list and the full
+substitution table (`docs/SANITIZATION-PATTERNS.md`), which cannot live here
+because they must name real clients to be useful.
 
-Until one is chosen, the dated staging folders are the only internal
-history, and the keep-two retention rule means anything older than two
-revisions is gone.
+Internal history starts 2026-08-10. Before that the only record was dated
+folders under a keep-two retention rule, so earlier revisions are gone.
