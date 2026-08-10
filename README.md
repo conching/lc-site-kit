@@ -24,6 +24,7 @@ codified so it never ships again.
 | [plugins/lc-core](https://github.com/conching/lc-core) *(submodule)* | Site-agnostic base WP plugin: per-site config layer, config-driven CSV importer, kses allowlists for CSS-only patterns, query-var augmenter |
 | [plugins/lc-bricks-mcp](https://github.com/conching/lc-bricks-mcp) *(submodule)* | MCP server as a WP plugin — lets Claude read/write Bricks pages, templates, global classes, colors, typography, and run structural verification (`verify:page`, `verify:orphaned_css`) |
 | [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) | Field lessons with working fixes, pending integration into the skills — read before auditing or extending |
+| [docs/SKILL-MAINTENANCE.md](docs/SKILL-MAINTENANCE.md) | Which copy of a skill wins, the sanitization conventions, and the leak audit — read before editing any `SKILL.md` |
 | [SETUP.md](SETUP.md) | Team onboarding: site prerequisites, credentials, Claude account wiring, per-project kickoff |
 | [bin/make-audit-bundle.sh](bin/make-audit-bundle.sh) | Flattens skills + docs + plugin source into one markdown file for LLM review |
 
