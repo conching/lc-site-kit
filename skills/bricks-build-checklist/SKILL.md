@@ -1,6 +1,6 @@
 ---
 name: bricks-build-checklist
-description: Build + verification checklist for WordPress sites built with Bricks Builder via the bricks-mcp connector. Use whenever composing or editing Bricks pages/templates through MCP tools — page builds, section edits, template migrations, global CSS changes, image/tile work, query loops, responsive passes — and before declaring any Bricks change "done". Codifies hard-won gotchas so client QA rounds don't re-discover them.
+description: "Build + verification checklist for WordPress sites built with Bricks Builder via the bricks-mcp connector. Use whenever composing or editing Bricks pages/templates through MCP tools — page builds, section edits, template migrations, global CSS changes, image/tile work, query loops, responsive passes, onboarding a new site to the MCP — and before declaring any Bricks change \"done\". Codifies hard-won gotchas so client QA rounds don't re-discover them."
 ---
 
 # Bricks Build Checklist
@@ -21,10 +21,48 @@ just presence**, **verify appearance against the comp, not against your own
 intent** (§11), and **new design rules apply retroactively to code written
 before the rule existed.**
 
-Connection guard: before ANY write, `get_site_info` and confirm the site
-name matches the project. A generically-named MCP server can point at a
-different client's site — a passed guard is the only proof you're writing
-to the right install.
+## 0. FIRST STEP: confirm which site you are pointed at
+
+Several Bricks MCP servers expose IDENTICAL tool names (a bare
+`bricks-mcp`, one `lc-bricks-mcp-<site>` per client, plus client-named
+staging servers), so the target is invisible in the tool call itself.
+
+Before ANY write: call `get_site_info` on the intended server, ECHO the
+returned site URL and the tool prefix (e.g. `mcp__lc-bricks-mcp-<site>__`)
+into the build plan, and do NOT write until both match the client named in
+the task. A bare `bricks-mcp` carries no site name yet can target one
+client's staging while a sibling server targets the same client's other
+host, both live — register every site server with its site in the name.
+A passed guard is the only proof you're writing to the right install.
+
+If the server is missing from the session or `get_site_info` fails, rule
+out "not registered in THIS client" before "site down": Claude Code,
+Desktop and Cowork each keep their own MCP registry (`claude mcp list` or
+`/mcp` in Claude Code; extension/connector settings in Desktop and Cowork).
+A per-site `.mcpb` bundle can install with its config saved yet
+`isEnabled: false`, and then no session loads it — check
+`~/Library/Application Support/Claude/Claude Extensions Settings/<extension-id>.json`.
+The credential is the bundle's `auth_basic` (OS keychain) and is the
+user's to generate. A site with no server yet: `reference/release-checklist.md`
+→ "New-site onboarding". With no working server, spec-only work still runs
+(element JSON checked with the pre-write harness, `reference/recipes.md`).
+
+**Then confirm the edit target matches what the client sees.** When the
+client describes the LIVE site and you can only write to a staging copy,
+curl both and diff the root section order (§1's grep) before building.
+Report drift up front — above all a missing placement anchor ("below the
+impact band" when staging lacks that band) — and either replicate the
+anchor on staging or state that the preview differs. Settle the deploy
+path at the same time (search memory and project notes for the site +
+staging/push/migrate): surgical writes on prod, template import, or a
+wholesale staging→prod push. Never propose a staging→live push from a
+staging that is behind live — it deletes live work.
+
+**Ids and structure from memory or earlier notes are hypotheses.** Other
+editors rebuild sections between sessions (a logo grid became a
+media carousel within a week — ids, classes and tiers all gone). Before the
+first write to an existing section in a session, read it back (`page get
+view:summary` or `verify:page` on the target).
 
 ## 1. After ANY structural edit: assert section ORDER, not presence
 
@@ -63,10 +101,36 @@ Two traps in the assert itself:
   that verified 2 of 6 pages shipped the same misplacement bug on the
   other 4, found by the client days later.
 
+**A REBUILT element is a RENAMED element.** Rebuilding rather than editing
+gives fresh ids, and every rule elsewhere naming the old id dies without
+error — Bricks emits it, the browser parses it, nothing matches. A COPIED
+element is renamed too (`template create_from_elements`, JSON import), so a
+section meant to travel gets class-scoped CSS from the start (§7 selector
+table). After any rebuild: grep every CSS surface for the old ids, run `verify:orphaned_css`
+(a post-rebuild step, not just a pre-launch one), and re-probe at ALL
+breakpoints — the responsive carrier is where dead ids hide, invisible at
+desktop (a pilot build's card row: five id lists, four of them dead,
+surfacing weeks later as 173px columns on a 390px phone). Sibling parity: when N
+elements are meant to be identical, assert their computed geometry against
+EACH OTHER in ONE probe, not each against your intent — the diff between
+siblings is what the client sees, and a rebuild drifts the recipe too.
+
 Templatization rule: only sections with EXACTLY identical content get a
 shared global section template. Near-duplicates (same layout, drifted
 copy) go to the client as a copy-standardization decision first —
 silently unifying copy destroys intentional per-page variations.
+
+**Components: probe the mechanism before designing around it.** Before
+planning anything on Bricks components via MCP, instantiate a one-heading
+probe component and curl the page (lc-bricks-mcp 2.1.1 on Bricks 2.4.1:
+`component:create` left children parented to the old root id, and even a
+fixed one-heading instance rendered an empty `<main>`). Empty output = build
+per-page sections plus ONE global class holding the pattern CSS. To tell a
+connector bug from a Bricks limitation, write the native shape raw through
+`page:update_content`, bypassing the component tool: an instance's `name`
+is the component ROOT's element type (e.g. `heading`), not the component
+id, and property values are a MAP keyed by property id — a list of
+`{id,value}` is silently ignored.
 
 ## 2. Images: bake-don't-crop, and place the DISPLAYED node
 
@@ -87,31 +151,39 @@ never render in a box of a different aspect ratio with `object-fit: cover`
   the comp places it uncropped and unstyled. Symptom of getting this
   wrong: "why is there a collage here?" — the raw source was a montage
   the design only sampled.
-- **Precondition on that rule:** crop-as-displayed is valid only when
-  NOTHING ELSE is composited over the crop region. Check the region
-  against the comp for overlapping text, badges or scrims first — the
-  node export bakes those in too. If anything overlaps, extract the
-  embedded source object instead and solve its opacity/blend separately
-  (per-channel alpha: channels agreeing = alpha overlay, channels
-  disagreeing = multiply). Verify every extracted asset **in isolation**
-  before upload, not only composited in place.
-- **Icon slots — `rawImages` vs `export`:** on a Figma icon rect, the
-  connector's `rawImages` are the designer's uploaded source fills (full
-  alpha); the node `export` BAKES the white rounded-rect card behind the
-  fill. For transparent icon slots always take `rawImages`. (Responses
-  may mis-label the mime as jpeg — verify the stored file is real RGBA.)
-- Figma vector/frame exports bake context rects (node-bounds + parent
-  fills) into "transparent" exports. Fix = SVG export + strip injected
-  `<rect>`s, or flood-fill border-connected white — but restore
-  legitimate white regions (photo frames) by re-opaquing pixels inside
-  known photo rects. Verify white/light assets against a DARK backdrop;
-  alpha-ratio checks composited on white prove nothing.
-- Asset sourcing: when Figma exports come back low-res or an asset is
-  missing, run `pdfimages -png` on the client's full-page PDF before
-  asking the client — placed images extract at their PLACED resolution
-  (RGB layer + a separate L-channel SMask = the alpha; recompose with
-  PIL `putalpha`). Check the extracted dimensions, since a PDF can embed
-  a low-res original.
+- **"It's cropped/clipped" — triage the ASSET before the CSS.** Compare the
+  served file's intrinsic ratio (`naturalWidth/naturalHeight`) against the
+  element's ink ratio in the comp: equal = the fault is in the box, unequal
+  = the fault is in the file. Several of a pilot build's badge PNGs shipped
+  with the ring cut off while their CSS (`width:86px; height:auto; object-fit:fill`)
+  could not crop anything. Run it across the whole sibling SET at once —
+  the outliers name themselves.
+- **`object-fit: contain` exposes the img's own box.** Sites running the
+  Performance Lab dominant-colour placeholder (`data-dominant-color` in the
+  served markup — record it as a site trait at discovery) give every OPAQUE
+  attachment `background-color: var(--dominant-color)`, which paints the
+  letterbox for good, not as a load flash. Every contain-fit img (logo
+  grids, badges, product tiles) needs an explicit `background-color:
+  transparent`. Probe the computed `backgroundColor` of each; in a mixed
+  set only the JPG-sourced logos show boxes — that split is the tell.
+- **Bricks media carousel (logo bands):** converting an image grid to a
+  media carousel drops every per-image class (optical-balance tiers), and
+  its slides default to 300px tall. Height, per-logo scale keyed to the
+  filename (never `nth-child`) and the add-a-logo steps:
+  `reference/recipes.md` → "Logo bands in a media carousel".
+- **Background-photo framing:** reproduce the comp's placement as a
+  width-proportional size plus a vw top offset measured off the PDF (e.g.
+  `129.1% auto`, top `-24.51vw`), with height
+  `max(calc(100% + <offset>), <N>vw)` so taller stacked sections stay
+  covered. Where an inventory
+  framing note and the PDF-measured asset manifest disagree, the manifest
+  wins.
+- Asset sourcing, extraction and repair recipes (Figma exports that bake in
+  context rects, `pdfimages` RGB+SMask recompose, icon `rawImages` vs
+  `export`, the crop-as-displayed precondition, the dependency-free PPM/PNG
+  pipeline when PIL is missing, uploads that keep their filename and alt):
+  `reference/recipes.md` — read it when an export comes back wrong,
+  low-res, cropped, or with baked-in bounds, and before any upload.
 
 ## 3. `background` shorthand must include a color
 
@@ -121,6 +193,12 @@ such sections flash WHITE. Automation browsers never fire the lazy
 IntersectionObserver — trust computed `background-color`, not `bgImage`,
 when probing. Rule: every section background written as shorthand gets a
 separate `background-color: <band color>` line.
+
+Never draw a logo or brand mark as an element's own `background-image`:
+the element carries `bricks-lazy-hidden`, so the mark flashes in (and
+computes `none` in probes). Put it on `#brxe-ID::before` (absolute,
+`inset:0`) — the lazy class does not touch pseudo-elements — or use an
+image element.
 
 ## 4. `_cssCustom` and settings-object edits REPLACE, never merge
 
@@ -133,6 +211,20 @@ separate `background-color: <band color>` line.
   in a summary view — read the full string before every edit.
 - `page update_content` replaces ALL page content. No append — resend the
   full element array.
+- Never pass `return_persisted: true` on a page above ~30 elements. On a
+  128-element page it returned 92,892 characters across 2,728 lines —
+  past the tool-result ceiling, so it spilled to a file and the two facts
+  actually needed (`element_id`, `persisted`) had to be recovered with a
+  parsing script. The default compact response already carries both plus
+  the stripped diff; read structure back with `page get view:summary` or
+  `verify:page`, which are bounded. An unbounded read-back bolted onto a
+  write is the most expensive way to learn a two-field result.
+- MCP `null` does NOT delete a style setting — it emits `display: ;
+  position: ;`. Browsers drop the declaration, but it is dead CSS in the
+  stored tree; set an explicit neutral value instead.
+  `null` removal is NOT uniform: it removes query/loop keys (§5) but leaves
+  STYLE keys present-and-empty. Read back the EMITTED CSS after any
+  deletion — the persist response describes the write, not the artifact.
 
 ## 5. Query-loop rules
 
@@ -193,18 +285,43 @@ separate `background-color: <band color>` line.
 - `_attributes` working format is an ARRAY `[{"id","name","value"}]` — an
   object map silently fails to render.
 - `_attributes` id="X" REPLACES the element's `brxe-` DOM id, killing all
-  `#brxe-{id}` CSS for that element. For anchor targets, add a zero-height
-  child `div` carrying the id instead of touching the section's own id.
+  `#brxe-{id}` CSS for that element. Never put an anchor id on the section
+  or card itself — use an ADDITIVE element (recipe below).
+- **Bricks omits ANY element whose render output is empty** — not just
+  childless layout elements. A childless `div` renders nothing; so does a
+  `text-basic` with `text: ""`. This is what makes the old "add a
+  zero-height child `div`" advice silently produce no anchor at all.
+  Diagnostic: the skipped element's `_cssCustom` STILL appears in the page
+  stylesheet (element CSS is collected by walking the stored tree, markup
+  by rendering it), so **CSS present + markup absent = element skipped,
+  not a bad selector** — the single most misleading signature here.
+  Verified on a pilot build: `grep -c 'brxe-<id>'` returned 0 across the
+  whole response while `#<anchor>{...}` was present in the emitted CSS.
+- **Stored but not rendered — enumerate ALL the hiding mechanisms** before
+  hunting CSS: conditions (`get_conditions`), empty render (above), and the
+  per-element hide flags `_hideElementFrontend` / `_hideElementBuilder` on
+  the element OR ANY ANCESTOR. The flags show only in `page get
+  view:detail` (large — filter it with
+  `jq '.. | objects | select(has("_hideElementFrontend"))'`);
+  `verify:page`, `get_conditions` and the summary view all report the
+  element as present. Un-hide with
+  `false`, not `null` (§4). "No conditions" is not "not hidden".
+- **Working additive-anchor recipe** (render-verified on a pilot build):
+  `reference/recipes.md` — read before adding any in-page anchor target.
 - Element ids: exactly 6 lowercase alphanumerics; root parent must be
   integer `0` (string "0" rejected at root).
 - `element remove` does NOT cascade — orphaned children STILL RENDER.
   Remove every descendant id individually, then curl-verify zero orphans
   (`verify:orphaned_css` scans stored CSS surfaces for dead `#brxe-` refs).
-- Retroactivity (twice-learned, cf. rule 2's bake-don't-crop sweep): after
+- Retroactivity (thrice-learned, cf. rule 2's bake-don't-crop sweep): after
   codifying any trap like the anchor-id one above, sweep the EXISTING build
-  for pre-rule violations — pages built before the additive-div convention
+  for pre-rule violations — pages built before the additive convention
   still carry anchor ids set directly on sections and orphan their CSS (run
-  rule 8's orphaned-rule scan on them).
+  rule 8's orphaned-rule scan on them), AND pages built during the
+  empty-`div` era carry anchors that render nothing at all. The second
+  class is invisible to `verify:orphaned_css` (a skipped element has no
+  dead CSS) — find it by grepping the served page for each literal anchor
+  id, or by clicking every in-page `href="#…"` link.
 
 ## 7. CSS layering + layout facts
 
@@ -216,17 +333,29 @@ you're in with one probe (`getElementById('brxe-X')?.className`):
 | Static element | `#brxe-X` | it has the DOM id but NOT a `brxe-X` class |
 | Loop child | `.brxe-X` | it has the class but an EMPTY id |
 | Bare (unlinked) image | `#brxe-X, #brxe-X img` | the element IS the `img` node |
+| Section that will travel (template, import, other site) | a section class via `_cssClasses`: `.band .child` | every copy regenerates the ids |
 
 Never write `#brxe-X img` alone for a bare image — there is no inner img.
+Choose the scope from the element's FUTURE: id selectors are for one-off
+page elements (class scope at 0-2-0 still beats Bricks' `.brxe-block`
+defaults). After `template create_from_elements`, grep the copied root's
+`_cssCustom` for `#brxe-` — any hit is a portability bug; fix it on BOTH
+copies before export.
 
 - Dead paths that emit NOTHING: theme-style `general.containerWidth`,
-  `css.custom`, `h1Typography`-style heading sub-keys, Bricks
+  `css.custom`, `h1Typography`-style heading sub-keys, root
+  `typography.font-family/size/color` (body type lives under
+  `typographyBody`), Bricks
   global_variable entries (they're stored as AI-reference tokens only —
   use literal hex in element CSS). Trusted paths: plugin-enqueued
   tokens.css, element-level settings/`_cssCustom`, element
   `_typography:<breakpoint>`.
 - **Flex key is `_direction`, NOT `_flexDirection`** — the wrong key
-  silently no-ops.
+  silently no-ops. And `_direction` only sets `flex-direction`: a Bricks
+  `div` is `display:block` by default (sections and containers are flex),
+  so a div with `_direction: row` still stacks. Set `display:flex` (CSS, or
+  `_display`) first and check computed `display` on the first render of
+  every new structural pattern.
 - **Column containers shrink-wrap by default.** A column-flex container
   with full-width row children needs `_alignItems: "stretch"` AT
   CREATION. This is the single most recurring layout bug in this stack —
@@ -287,92 +416,70 @@ Never write `#brxe-X img` alone for a bare image — there is no inner img.
   write the LITERAL character (`✓`, `→`), never `\2713` / `\2192`.
 - `_background` images need `{id, url}` — id alone persists but emits no
   CSS. `_cssGlobalClasses` takes class IDs (e.g. "ujrjee"), never names.
+- **Element CSS is NOT emitted parent-before-child.** A child container's
+  `_cssCustom` lands at an EARLIER byte offset than its parent's, so at
+  equal specificity the PARENT wins on source order — the DOM intuition is
+  backwards. Never rely on position between two elements' blocks; raise
+  specificity or add `!important` (after checking the competing declaration
+  isn't itself `!important`). The upside: parking an override in an UNUSED
+  `_cssCustom` field on a nearby element beats splicing a 10KB block.
+- **A component-named utility class must fully declare its identity** —
+  family, weight, size, colour — not just the one property that differed
+  from its first container. `.lc-arrow-link` declared only
+  `font-weight:500` and rendered in THREE typefaces across six uses, read
+  as random per-page inconsistency for a whole QA round. Modifier-named
+  classes (`.lc-eyebrow--dark`, colour only) are the exception. Audit:
+  "dropped in a container with no typography, does it still look right?"
+- **Global classes compile to `.class.brxe-<elementtype>`**
+  (`.lc-btn.brxe-button`), so they CANNOT style raw HTML typed into a
+  text/rich-text field — that markup carries no `brxe-*` class, and
+  promoting a hand-written class silently unstyles every consumer while
+  looking like it "didn't take". Confirm the carriers are real Bricks
+  elements first (wrapper+inherit fallback: `reference/recipes.md`), and
+  when the purpose is "the client's team can edit this", PROVE propagation
+  live — set a wrong value, confirm every consumer moves, revert.
+- Site utility classes (`.lc-pattern-corner`) are usually plain `_cssClasses`
+  strings, NOT registered global classes (`global_class list` returns
+  nothing) — removing one means rewriting that string, not calling the
+  global-class remove action.
+- **`_typography.font-family` is family-only.** Bricks emits one quoted
+  family, so `brand-grotesk, sans-serif` becomes the invalid family
+  `"brand-grotesk, sans-serif"` — a client declaration carrying a fallback
+  stack survives only in handwritten `_cssCustom`. A new Adobe kit font is
+  absent from Bricks' font picker (that cache refreshes only when the
+  project ID is re-saved) yet renders fine: a missing picker entry is not a
+  broken kit.
+- **Never wire anything to a token without a pre-flight** on the GENERATED
+  stylesheet — global variables AND typography-scale variables written
+  through the MCP emit doubled (`----lc-navy`, `----lc-text-h1`), so `var(--lc-navy)` resolves
+  empty (the scale's own utility classes included) and the MCP can repair
+  neither. Only palette colours emit clean vars via MCP: type sizes go in
+  literal px, other non-colour tokens in a plugin-enqueued `:root{}` (the
+  lc-core site config). Probe each path separately — one clean path proves
+  nothing about its siblings. `var()` works in the font-size and colour
+  fields but NOT font-family. Procedure: `reference/recipes.md`.
+- **`overflow:hidden` on a section is for containing a positioned or
+  full-bleed CHILD, never for a background** — backgrounds paint inside the
+  border box and cannot overflow. Added reflexively beside a gradient it
+  clipped a card whose `margin-bottom:-70px` WAS the designed overlap
+  ("the box disappeared"), geometry still measuring correct because only
+  paint was cut. Scan descendants for negative margins, absolute
+  positioning outside the padding box, and transforms first; for horizontal
+  containment use `overflow-x: clip` (permits `overflow-y: visible`) —
+  `overflow: hidden` forces the other axis to `auto`.
+- **Cross-card alignment is a subgrid problem, not a `min-height`
+  problem** — row heights must derive from the tallest card, not hard-code
+  today's copy; a `min-height` found in existing work is a dated
+  measurement, treat it as debt. Recipe plus the `row-gap` inheritance
+  trap: `reference/recipes.md`.
 
 ## 8. Verification recipe (run before "done")
 
-1. Curl every touched page with `?nc=$RANDOM` (page caches lie; browsers
-   show stale element CSS).
-2. Section-order assert (rule 1) per page, per render mode.
-3. Overflow scan at desktop + narrow simulation (exclude
-   `#claude-phantom-*`, `#wpadminbar`, and `position:fixed` elements):
-   `getBoundingClientRect().right > clientWidth` count must be 0 — and
-   `document.documentElement.scrollWidth === clientWidth` (intentional
-   full-bleed elements may report rects past the edge while clipped).
-4. Computed-style probes for backgrounds (rule 3) — not screenshots;
-   below-fold sections and `_cssCustom` bg-images render blank in
-   automation screenshots even when correct.
-5. Anchor-id integrity: for every section whose rendered id is NOT
-   `brxe-`-prefixed (it carries an `_attributes` anchor id, cf. rule 6),
-   assert its background/padding still computes as intended — OR run
-   `verify:orphaned_css`. Fix = dual selector or migrate the id to an
-   additive zero-height child div.
-6. If a conditional mode exists (alert vs normal), fire-drill BOTH
-   directions and re-run the asserts in each.
-7. Screenshot only for above-fold composition; use `zoom` region captures
-   for detail claims.
-8. **Environment limits** — know these before calling something broken:
-   - Time- and viewport-driven behavior (enterView reveals, lazy-load,
-     CSS animations) CANNOT be verified in the automation pane (frozen
-     rendering clock — `getAnimations()[0].currentTime` stays 0,
-     IntersectionObserver never delivers) nor in background Chrome tabs
-     (`document.visibilityState === "hidden"`). Probe the clock before
-     debugging "broken" observers.
-   - Bricks lazy-hidden also suppresses `_cssCustom` background-images,
-     not just `_background` ones — verify via emitted CSS + the bg-color
-     fallback, never via a pane screenshot.
-   - Blank images in pane screenshots must be cross-checked with
-     `img.complete` / `naturalWidth` before being treated as defects
-     (pane paint-lag).
-   - Fresh pane tabs open at a NARROW default viewport, so mobile rules
-     are active — `resize_window` to 1440 before trusting computed probes.
-   - Below-fold visual checks in the pane: keep scrollY 0 and shift
-     content with `document.body.style.transform = 'translateY(-Npx)'` —
-     real scrolling renders with a wrong-sign offset there.
-   - `getComputedStyle` during a transition's DELAY returns the START
-     value. To assert a target state, inject `transition:none!important`
-     first — otherwise a correct rule reads as "selector didn't match".
-   Verify instead: assert emitted config/CSS statically, design fallbacks
-   that fail visible (§10.5), and get a human glance for final motion QA.
-9. Run the §11 fidelity pass before declaring a PAGE done.
-10. Run the §12 responsive probes before declaring a PAGE done.
+Moved to `reference/verification.md` — read after any structural edit and before declaring any change or PAGE done (it ends by calling §11 and §12).
 
 ## 9. WP-admin automation + release hygiene
 
-- Synthetic clicks on wp-admin upload/update screens stall — fall back to
-  `HTMLFormElement.prototype.submit.call(form)` (an input named "submit"
-  shadows the method) and JS `element.click()` on nonce links.
-- **Plugin deploy without user presence (preferred recipe):** REST-stage
-  the zip into the site's own media library → on the wp-admin plugin
-  upload page, `fetch()` it back → `DataTransfer` → `input.files` →
-  submit → "Replace current with uploaded" → hit any admin page so
-  `admin_init` fires the upgrade hook → delete the staged media. This
-  works in the user's logged-in Chrome with no user action, and avoids
-  the browser `file_upload` limitation (it only accepts session-attached
-  files).
-- Legacy path: build zip OUTSIDE mounted folders (mounts block
-  overwrite), copy under a NEW filename, wait ~60s for cloud sync before
-  browser file_upload.
-- Version bumps: WP shows the plugin HEADER version, code gates on the
-  define — bump BOTH.
-- **Release artifacts are scanned, not assumed.** A zip built from a
-  working tree inherits UNTRACKED per-site files (site configs,
-  client-specific data). Build public releases from a clean checkout, or
-  move per-site files aside first — then content-scan the BUILT ARTIFACT
-  for client identifiers before publishing. Scanning the tree is not
-  scanning the artifact.
-- **End every plugin session with a push check:** run
-  `git log --branches --not --remotes --oneline` in each touched repo
-  (site core plugin, connector) and push anything unpushed. Work that exists
-  only in a local commit is work the next session cannot see.
-- Flipping shared-site state (e.g. a conditional render mode) requires
-  explicit user
-  approval first; plan the revert before the flip.
-- If the site has a confirm() guard on state-flip forms (some site plugins add one),
-  automation must run `window.confirm = () => true` before submitting.
-- Some connector actions are gated behind a "Dangerous Actions" toggle
-  (page CSS/scripts writes). When it's off, element-level `_cssCustom` is
-  still writable — prefer solving in element CSS over asking the client
-  to paste code.
+Moved to `reference/release-checklist.md` — read before any plugin deploy, new-site MCP onboarding, staging→production promotion, shared-site state flip, or declaring a SESSION complete.
 
 ## 10. Raw HTML is sanitized at SAVE time (wp_kses) — read back first
 
@@ -399,185 +506,40 @@ read-back habit stays mandatory on every path.
   for accordions, FAQs and mobile menus (§10.5).
 - Principle: sanitizers mutate at write time — always read back what SAVED
   before styling or building on top of pushed markup.
+- Toggle switches: `<input type="checkbox">` + `<label for>` survives the
+  save path and needs ZERO JS for its visuals (recipe in
+  `reference/recipes.md`) — ship the presentation now, persistence is its
+  own, possibly gated, step.
+- **Every JS-adding surface can be classifier-blocked** in a
+  default-permission session: `code:set_page_scripts` (Dangerous Actions
+  off), the dangerous-actions toggle itself, AND the Chrome fallback, which
+  holds for REST content writes but does NOT extend to script injection.
+  Working pattern — build everything except the script, stage the exact
+  script and the exact MCP call in a project file, and hand the user the
+  30-second toggle; `set_page_scripts` then succeeds via MCP with no
+  browser at all. Page CSS writes are gated the same way, but element-level
+  `_cssCustom` stays writable — solve there rather than asking the client
+  to paste code.
+- When a build introduces a plugin-backed shortcode or dynamic module,
+  record in the build notes (a) the file and function that DEFINE it,
+  (b) which layer owns each aspect — markup/logic in PHP, presentation in
+  the element CSS, content in taxonomy terms or fields — and (c) whether
+  that file has a LOCAL VERSIONED copy; if not, pull one down before the
+  first edit. A per-site config that is gitignored and ships only inside
+  the deploy zip exists only on the server: wp-admin editor changes are
+  unversioned and the next deploy destroys them.
 
 ## 10.5 Interactions + animations (Bricks-native)
 
-- Use `_interactions` arrays (never deprecated `_animation*` keys):
-  `{id: <6-char>, trigger: "enterView", action: "startAnimation",
-  animationType: "fadeInUp", animationDuration: "0.7s", animationDelay:
-  "0.1s", target: "self", runOnce: true}` — `runOnce` persists as `"1"`,
-  accepted. Stagger siblings by 0.1s; keep ≤5–6 animated elements per
-  viewport; NEVER animate the hero/LCP element.
-- Bricks pre-hides "In"-animation elements server-side via
-  `data-interaction-hidden-on-load` + the layered rule
-  `.bricks-is-frontend :not(.brx-animated)[data-interaction-hidden-on-load]
-  {opacity:0}` (animate-layer.min.css, `@layer bricks`).
-  `bricks-lazy-hidden` only suppresses `background-image` — it is NOT the
-  opacity mechanism.
-- MANDATORY with any enterView reveal — the dead-observer safety net
-  (un-layered, site-wide CSS): content hidden until JS+observer succeed
-  must fail VISIBLE:
-  ```css
-  @keyframes lcReveal{to{opacity:1}}
-  :not(.brx-animated)[data-interaction-hidden-on-load]{animation:lcReveal .6s ease 3s forwards}
-  ```
-  Un-layered animations beat layered static opacity; once Bricks adds
-  `.brx-animated` the selector stops matching and the designed animation
-  takes over.
-
-### Scroll-driven state without JS — `.brx-animated`
-
-An `enterView` interaction makes Bricks add `.brx-animated` to that
-element the moment it enters the viewport, and **never removes it** (the
-`animationend` handler strips only `brx-animate-<type>`). That is a free,
-permanent "this has scrolled into view" hook — reach for it before writing
-any IntersectionObserver JS, especially where page-level script fields are
-gated behind Dangerous Actions.
-
-```css
-#brxe-ID::before{ /* idle state */ transition:<props> calc(var(--d) + .55s); }
-#brxe-ID.brx-animated::before{ /* revealed state */ }
-```
-
-- Specificity: `#brxe-ID.brx-animated` (1-1-0) beats the `#brxe-ID` base
-  rule (1-0-0). No `!important` needed.
-- **The delay must exceed the card's own reveal.** A pseudo-element
-  inherits its element's reveal opacity, so with no `transition-delay` the
-  new state arrives already-applied and the transition is never seen.
-- Carry each row's existing `animationDelay` stagger as a `--d` custom
-  property on the element (pseudo-elements inherit it) so the cascade stays
-  in sync when several elements enter view at once.
-- Do NOT add a dead-observer fallback for the state change. The §10.5
-  safety net above fires on a 3s timer and would flip every below-fold
-  element while off-screen. Degrading to "state never changes" is correct;
-  degrading to "all states fire at once, unseen" is not.
-- Verify per §8.8: assert both states with `transition:none!important`
-  injected; the scroll trigger itself is not observable in the pane.
-
-### Kses-safe, JS-free mobile menu
-
-When no real JS nav element is available via MCP, the standard recipe is a
-`<details class="…">` burger in a text-basic element plus `:has()` to
-reveal the EXISTING nav container as a fixed overlay:
-
-```css
-#brx-header:has(.lc-mmenu[open]) #brxe-NAV{opacity:1;visibility:visible}
-html:has(.lc-mmenu[open]){overflow:hidden}  /* scroll lock */
-```
-
-The text-basic WRAPPER div nests `<details>` one level down, which breaks
-sibling-combinator tricks — `:has()` is the load-bearing selector here, not
-a convenience. Style `summary` with `list-style:none` +
-`::-webkit-details-marker{display:none}` and morph it to an X on `[open]`.
-
-- Hover system: put states on classes (see §7 specificity note); include
-  `:active` press states, `a:focus-visible` outlines, and a
-  `@media (prefers-reduced-motion: reduce)` kill-switch in the same block.
-- Bricks click-interaction semantics (verified against bricks.min.js):
-  hide = inline `display:none`; show = clear inline, then if the computed
-  value is still none, set `display:BLOCK` (so panels must look right
-  under block flow); `setAttribute`/`removeAttribute` with
-  `actionAttributeKey:"class"` = `classList` add/remove (modifier-safe);
-  `targetSelector` = `querySelectorAll` (ALL matches).
-- Div-based tab rows driven by click interactions have NO keyboard access
-  or ARIA — that is an accessibility debt to log, not a shipped feature.
-- Site-wide interaction CSS rides in the HEADER template's `_cssCustom`
-  until an enqueued stylesheet path exists — it renders on every page.
+Moved to `reference/interactions.md` — read before adding any interaction, scroll reveal, animation, or JS-free menu/toggle.
 
 ## 11. Design Fidelity Pass (comp-diff — run per page before "done")
 
-The verification recipe (§8) checks the build against itself; this pass
-checks it against the DESIGN. Skipping it is how a structurally-perfect
-page ships with the wrong scrim, wrong icon fills, missing decorative
-layers, and a stretched button (a pilot build's homepage, round 1).
-
-**Ground truth priority:**
-1. **`get_design_context` on the node** (Figma Dev Mode) — returns the
-   DECLARED typography, geometry and copy verbatim. It is the authority
-   for font family/weight/size disputes; never adjudicate weights from
-   raster crops. Note it often SUCCEEDS on full frames whose
-   `get_metadata` times out — try the full-frame call before falling back.
-2. **The client's per-page PDF export** — the frozen, deterministic record
-   and the source for photo extraction at placed resolution. Live Figma
-   files drift after approval (observed on a pilot build same-day).
-3. Figma metadata numbers alone carry no scrims, baked fills, or
-   decorative layers — never sufficient on their own.
-
-1. Render the PDF once: `pdftoppm -png -r 100 <page.pdf>` → slice into
-   ~1500px section bands (PIL). Keep the bands; they're the reference for
-   every later edit to that page. For asset extraction prefer REGION crops
-   (`pdftoppm -x -y -W -H`) + channel math over full-page renders and
-   per-pixel PIL loops. `-r 144` = 2x native for images placed at 144ppi.
-2. Per section, side-by-side against the live render, check:
-   - [ ] **Geometry:** content gutters/max-width at 1280 / 1440 / 1920
-         (§7 container discipline); full-bleed edges reach the viewport.
-   - [ ] **Overlay/scrim tone:** sample a known-white and a known-dark
-         pixel in the comp; reverse-engineer the blend — per-channel
-         `alpha = (bg − target)/(bg − raw)` for alpha overlays; if
-         channels disagree wildly, it's a multiply blend
-         (`mix-blend-mode:multiply` + solid gradient). Encode literal hex.
-   - [ ] **Accent colors + case:** icon circle fills, eyebrows, tags,
-         link colors against palette tokens — including text-transform
-         (comp "Primary" ≠ built "PRIMARY") and font family/weight.
-   - [ ] **Decorative layers PRESENT:** pattern bands, connector rails,
-         dots/checks, badges, divider strips, accent lines. These live in
-         page-level vectors the section inventory misses — walk the comp
-         band visually and name every non-photo layer.
-   - [ ] **Typography rhythm:** display line-height (comps run ~1.1, Bricks
-         default 1.4 — measure line spacing off the band), intentional
-         line breaks, heading widths.
-   - [ ] **Assets as displayed:** every image compared against the comp's
-         crop/tint — raw-source montages and baked-bounds exports jump out
-         here (§2 displayed-node rule).
-3. **Calibrate before trusting any comp-derived measurement.** Solve an
-   element already BUILT AND APPROVED and confirm your method returns its
-   known value. Compare ink-to-ink
-   (`actualBoundingBoxLeft/Right`), never ink-to-advance; measure cap
-   height off a flat-topped capital only. Where the comp font and the
-   shipped font differ, the substitution is a known fidelity CEILING —
-   record it and put the residual on the punch-list instead of chasing it.
-4. **A spec measured on a sample of comps is a HYPOTHESIS for the rest.**
-   Before batch-applying a type rule to page N, verify N's declared value
-   (`get_design_context`) or its PDF. Distinguish component VARIANTS
-   (left-aligned section H2 vs centered display header) before unifying
-   sizes — "one size everywhere" sweeps have been wrong twice.
-5. **Audit which font weights the kit actually serves.** A declared weight
-   the kit doesn't ship renders silently ONE WEIGHT DOWN, site-wide, from
-   day one. Fetch the kit CSS (e.g. `use.typekit.net/<id>.css`), parse
-   `@font-face`, and confirm every weight in use is present. Beware
-   near-miss family names — a base family may ship only display weights
-   while the usable upright range lives under a `-pro` sibling.
-6. Anything intentionally divergent goes on the client punch-list — a
-   deviation is a decision, never a silent default.
-7. Assets needed during the pass come from the SAME PDF: `pdfimages -png`
-   emits RGB + SMask pairs (recompose for alpha) at placed resolution.
+Moved to `reference/fidelity-pass.md` — read before declaring any PAGE done, and again before every design-fix round.
 
 ## 12. Responsive passes
 
-Bricks-native breakpoints are **991 / 767 / 478**. Breakpoint-suffixed
-element settings (`_padding:tablet_portrait`, `_typography:mobile_landscape`)
-emit at exactly those widths and compose cleanly with handwritten
-`@media` blocks.
-
-Three landmines on every row→column flip:
-1. **Shrink-wrap** — the flipped container needs `align-items: stretch`.
-2. **Residual margins** — children keep their desktop `margin-left` and
-   overflow by exactly that amount. Every stacked-children rule needs
-   `width:100%; max-width:100%; min-width:0; margin-left:0; margin-right:0`.
-3. **Same-specificity ties** — all cross-element overrides carry a
-   `#brx-content` / `#brx-header` / `#brx-footer` prefix (§7).
-
-Conventions:
-- Each page gets ONE carrier element whose `_cssCustom` holds that page's
-  responsive block; site-wide framework rules live in the header template.
-- Never leave an interim `!important` mobile block in place once the
-  designed pass lands — replace it, don't layer on it.
-- Sweep the 768px TABLET range explicitly. Mobile-only fixes written at
-  ≤767 leave a gap at 768–991 that no phone check catches.
-- Wide content (matrices, tables) gets an `overflow-x` scroller plus a
-  sticky first column and a visible swipe affordance.
-- Probe `scrollWidth === clientWidth` + the per-element right-edge scan
-  (position:fixed excluded) at **375 / 768 / 1440** per page before "done".
+Moved to `reference/responsive-pass.md` — read before declaring any PAGE done.
 
 ## Pre-flight (enforcement)
 

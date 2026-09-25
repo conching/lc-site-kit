@@ -43,7 +43,7 @@ public history reads as one voice.
 | a client's named render modes | "alert vs normal", "a conditional render mode" |
 | culturally or regionally specific asset names | "decorative pattern band", "brand seal" |
 | a client's domain vocabulary | the generic category ("product", "availability matrix") |
-| Figma `fileKey`, staging hostnames, element ids | removed entirely |
+| Figma file keys, staging hostnames, element ids | removed entirely |
 | an internal-only marker in the title | plain title + attribution + licence block |
 
 Note this table names *categories*, never the actual values — writing the
