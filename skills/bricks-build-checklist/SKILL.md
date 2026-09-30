@@ -131,6 +131,14 @@ connector bug from a Bricks limitation, write the native shape raw through
 is the component ROOT's element type (e.g. `heading`), not the component
 id, and property values are a MAP keyed by property id — a list of
 `{id,value}` is silently ignored.
+The same goes for any renderer behaviour that several PARALLEL section
+specs will share (custom `_attributes` id, lazy-load markup, class
+emission): probe it once on a scratch page before the specs fan out,
+record the result in the build plan for them to cite, and have the
+reviewer mock the page from the real sibling specs, not stand-ins. On a
+later build several section specs each carried "confirm after write" on the
+anchor recipe; had it been false, every anchor would have fallen into flow
+at once (tens of px of drift by the third section).
 
 ## 2. Images: bake-don't-crop, and place the DISPLAYED node
 
@@ -178,6 +186,24 @@ never render in a box of a different aspect ratio with `object-fit: cover`
   covered. Where an inventory
   framing note and the PDF-measured asset manifest disagree, the manifest
   wins.
+- **Eager vs lazy is measured per viewport, and set on EVERY image.**
+  Bricks JS lazy-load ships a data:SVG placeholder as `src`, so a lazy hero
+  is invisible to the preload scanner (`fetchpriority=high` wasted, empty
+  with JS off); `loading:"eager"` makes Bricks emit the real src/srcset.
+  Eager = visible at every width with its top inside the first viewport
+  (< 900 at 1440, < 720 at 1280), keep `fetchpriority` high on one — decide
+  from a probe, not section order (a 508px interior hero puts section 2's
+  largest photo above the fold). Images hidden at some tier stay lazy so
+  they are never fetched there. Set `loading` explicitly on the rest too:
+  with Bricks' "Disable lazy loading" on, an unset image gets no attribute
+  and loads at first paint. Per-width download check:
+  `reference/verification.md`.
+- **SVGs in the Media Library** are stored 0×0, so every SVG image element
+  gets explicit CSS width/height, and the sanitizer rewrites every file, so
+  gate uploads by pixels, not bytes: `reference/recipes.md` → "SVG uploads".
+- **Swapping a new file into an existing box** (a sharper photo, a
+  replacement logo): a different aspect silently reframes a cover-fit box —
+  `executing-client-feedback` → asset-swap recipe before any upload.
 - Asset sourcing, extraction and repair recipes (Figma exports that bake in
   context rects, `pdfimages` RGB+SMask recompose, icon `rawImages` vs
   `export`, the crop-as-displayed precondition, the dependency-free PPM/PNG
@@ -198,7 +224,16 @@ Never draw a logo or brand mark as an element's own `background-image`:
 the element carries `bricks-lazy-hidden`, so the mark flashes in (and
 computes `none` in probes). Put it on `#brxe-ID::before` (absolute,
 `inset:0`) — the lazy class does not touch pseudo-elements — or use an
-image element.
+image element. Prove it survives with the JS-off probe in
+`reference/verification.md`.
+
+Recipes keyed on `bricks-lazy-hidden` depend on Bricks lazy-load being ON.
+Its "Disable lazy loading" toggle removes the class, so a CSS-only
+background deferral built on it loads at first paint; re-defer with
+`content-visibility:auto` + `contain-intrinsic-size` (content-box height
+per tier; no pop-in, Chrome pre-renders ~1.5 viewports ahead). Before
+recommending any Bricks performance toggle, list the recipes that depend on
+it.
 
 ## 4. `_cssCustom` and settings-object edits REPLACE, never merge
 
@@ -208,7 +243,12 @@ image element.
   and similar one-off fixes ride along inside old strings and silently
   vanish otherwise. This bites hardest where a section's `_cssCustom`
   carries a large payload (icon data-URIs, embedded SVG) that is invisible
-  in a summary view — read the full string before every edit.
+  in a summary view — read the full string before every edit. Such a
+  payload is also page weight: `_cssCustom` ships inline on every load,
+  uncached (a 100 KB Figma pattern = ~134 KB base64). Dedupe a vector
+  pattern before embedding it (figma-to-bricks asset prep: `<defs>` +
+  `<use>`, pixel-verified, 100 KB → 13 KB) or serve it as a Media Library
+  file (§2). Fix rounds on such a section park their CSS elsewhere (§7).
 - `page update_content` replaces ALL page content. No append — resend the
   full element array.
 - Never pass `return_persisted: true` on a page above ~30 elements. On a
@@ -218,7 +258,9 @@ image element.
   parsing script. The default compact response already carries both plus
   the stripped diff; read structure back with `page get view:summary` or
   `verify:page`, which are bounded. An unbounded read-back bolted onto a
-  write is the most expensive way to learn a two-field result.
+  write is the most expensive way to learn a two-field result. For a large
+  write, the default readback is a script over the served front end, not
+  the stored tree (`reference/verification.md`).
 - MCP `null` does NOT delete a style setting — it emits `display: ;
   position: ;`. Browsers drop the declaration, but it is dead CSS in the
   stored tree; set an explicit neutral value instead.
@@ -268,6 +310,17 @@ image element.
     text elements.
 - `hasLoop` on a text-basic containing `{tags}` does NOT create loop
   context — use a loop `div` with native child elements per dynamic tag.
+- **ACF repeater loop:** a `div` with `hasLoop` + `query.objectType:
+  "acf_<repeater field NAME>"` (the field KEY renders zero rows;
+  `get_query_types` omits these types), children `{acf_<repeater>_<sub>}`. A wrong type is an
+  empty render, not an error: count rendered rows against the source.
+- **`{acf_<name>}` resolves by field NAME across ALL groups** — a name in
+  two groups renders the other group's value. List repeated names before
+  wiring tags (`reference/recipes.md`); in post context use `{cf_<name>}`
+  (`{cf_<repeater>}` = row count).
+- **Templates with conditions go through `template import` with
+  `templateSettings.templateConditions`**; `template create` /
+  `template_condition set` write a key Bricks ignores (never applies).
 - Load More: the interaction's `loadMoreQuery` must be the LOOP ELEMENT's
   id (e.g. "rsmlc0"), never "main" — "main" silently no-ops. A working
   loadMore preserves server-side filter query vars through the AJAX
@@ -287,16 +340,19 @@ image element.
 - `_attributes` id="X" REPLACES the element's `brxe-` DOM id, killing all
   `#brxe-{id}` CSS for that element. Never put an anchor id on the section
   or card itself — use an ADDITIVE element (recipe below).
-- **Bricks omits ANY element whose render output is empty** — not just
-  childless layout elements. A childless `div` renders nothing; so does a
-  `text-basic` with `text: ""`. This is what makes the old "add a
-  zero-height child `div`" advice silently produce no anchor at all.
-  Diagnostic: the skipped element's `_cssCustom` STILL appears in the page
-  stylesheet (element CSS is collected by walking the stored tree, markup
-  by rendering it), so **CSS present + markup absent = element skipped,
-  not a bad selector** — the single most misleading signature here.
-  Verified on a pilot build: `grep -c 'brxe-<id>'` returned 0 across the
-  whole response while `#<anchor>{...}` was present in the emitted CSS.
+- **Bricks omits some elements whose render output is empty.** Proven: a
+  `text-basic` with `text: ""` and a `div` with no settings render nothing
+  (a pilot build; the old "zero-height child `div`" anchor produced no
+  anchor). NOT universal: on Bricks 2.3.9 a childless `div` with
+  `_cssClasses` DID render (`<div id="brxe-…" class="brxe-div hero-overlay">
+  </div>`), so an overlay can be a plain classed div; keep `&nbsp;` for
+  text elements. Grep the served page for the element id before choosing a
+  workaround or calling an element "skipped". Diagnostic: a skipped
+  element's `_cssCustom` STILL appears in the page stylesheet (CSS is
+  collected by walking the stored tree, markup by rendering it), so **CSS
+  present + markup absent = element skipped, not a bad selector** — the
+  most misleading signature here (on a pilot build: `grep -c 'brxe-<id>'`
+  returned 0 while `#<anchor>{...}` was in the emitted CSS).
 - **Stored but not rendered — enumerate ALL the hiding mechanisms** before
   hunting CSS: conditions (`get_conditions`), empty render (above), and the
   per-element hide flags `_hideElementFrontend` / `_hideElementBuilder` on
@@ -310,8 +366,10 @@ image element.
   `reference/recipes.md` — read before adding any in-page anchor target.
 - Element ids: exactly 6 lowercase alphanumerics; root parent must be
   integer `0` (string "0" rejected at root).
-- `element remove` does NOT cascade — orphaned children STILL RENDER.
-  Remove every descendant id individually, then curl-verify zero orphans
+- `element remove` does NOT cascade — orphaned children STILL RENDER
+  (removing a dropdown reparented its sub-menu list into the dropdown's
+  parent). Remove every descendant id individually, read back the parent's
+  children, then curl-verify zero orphans
   (`verify:orphaned_css` scans stored CSS surfaces for dead `#brxe-` refs).
 - Retroactivity (thrice-learned, cf. rule 2's bake-don't-crop sweep): after
   codifying any trap like the anchor-id one above, sweep the EXISTING build
@@ -391,6 +449,11 @@ copies before export.
 - Element/page CSS loads AFTER plugin tokens.css. tokens rules need
   `!important` to beat later element rules; an element's own `!important`
   ties and wins by load order — fix those at source.
+- **A plugin that prints its own `<style>` late (cookie banner) wins ties
+  against your enqueued CSS.** Add one step of specificity (an `html `
+  prefix) and verify at the widths where the plugin has media queries.
+  Prototype injected CSS right after the real `<link>`, never at document
+  end; let `transition: all` settle before measuring.
 - Element-level settings emit as `#brxe-id` rules (specificity 1-0-0) and
   silently beat global-class `:hover` rules (0-2-0). Variant styling that
   will ever need states belongs in a GLOBAL class (`_cssGlobalClasses`,
@@ -422,7 +485,16 @@ copies before export.
   backwards. Never rely on position between two elements' blocks; raise
   specificity or add `!important` (after checking the competing declaration
   isn't itself `!important`). The upside: parking an override in an UNUSED
-  `_cssCustom` field on a nearby element beats splicing a 10KB block.
+  `_cssCustom` field on a nearby element beats splicing a 10KB block — the
+  default for fix rounds on a section whose `_cssCustom` carries a data URI,
+  since every resend is a chance to corrupt it. Because a child's CSS prints
+  BEFORE its section's, a parked rule must carry at least ONE MORE id than
+  the rule it overrides (`#brx-content #brxe-SECTION #brxe-CHILD`, not
+  `#brx-content #brxe-CHILD`); prototype it injected FIRST in the page CSS
+  (the worst case), never appended last, which hides the tie; log it in the
+  build notes as "parked". When a string holding a data URI must be resent
+  anyway, decode the live one from the served HTML and byte-compare it to
+  the local asset.
 - **A component-named utility class must fully declare its identity** —
   family, weight, size, colour — not just the one property that differed
   from its first container. `.lc-arrow-link` declared only
@@ -438,14 +510,23 @@ copies before export.
   elements first (wrapper+inherit fallback: `reference/recipes.md`), and
   when the purpose is "the client's team can edit this", PROVE propagation
   live — set a wrong value, confirm every consumer moves, revert.
+- **Global-class `_cssCustom` is truncated at the first `<` on save** —
+  even inside a comment (`(<=478 …)` took a whole media block with it).
+  Page and template element `_cssCustom` keep `<`. Never write `<` in class
+  CSS (`max 478` in comments; `>` is fine), and after every class CSS write
+  compare the rendered block's length and LAST rule with what was sent.
 - Site utility classes (`.lc-pattern-corner`) are usually plain `_cssClasses`
   strings, NOT registered global classes (`global_class list` returns
   nothing) — removing one means rewriting that string, not calling the
   global-class remove action.
-- **`_typography.font-family` is family-only.** Bricks emits one quoted
+- **`_typography.font-family` is family-only; the stack goes in the
+  typography `fallback` key.** Bricks emits `font-family` as one quoted
   family, so `brand-grotesk, sans-serif` becomes the invalid family
-  `"brand-grotesk, sans-serif"` — a client declaration carrying a fallback
-  stack survives only in handwritten `_cssCustom`. A new Adobe kit font is
+  `"brand-grotesk, sans-serif"`. Put the fallback stack in the `fallback`
+  key (NOT `font-fallback`, silently ignored): on Bricks 2.4.1 it emits
+  `font-family: "brand-display", 'Helvetica Neue', Arial, sans-serif` in
+  theme styles AND global classes. Without it, a not-yet-loaded Adobe font
+  paints in Times. A new Adobe kit font is
   absent from Bricks' font picker (that cache refreshes only when the
   project ID is re-saved) yet renders fine: a missing picker entry is not a
   broken kit.
@@ -475,7 +556,7 @@ copies before export.
 
 ## 8. Verification recipe (run before "done")
 
-Moved to `reference/verification.md` — read after any structural edit and before declaring any change or PAGE done (it ends by calling §11 and §12).
+Moved to `reference/verification.md` — read after any structural edit and before declaring any change or PAGE done (it covers the plain-URL vs cache-busted cache check, scripted readback, lazy-load, seam, contrast and a11y probes, and ends by calling §11 and §12).
 
 ## 9. WP-admin automation + release hygiene
 
@@ -519,7 +600,10 @@ read-back habit stays mandatory on every path.
   30-second toggle; `set_page_scripts` then succeeds via MCP with no
   browser at all. Page CSS writes are gated the same way, but element-level
   `_cssCustom` stays writable — solve there rather than asking the client
-  to paste code.
+  to paste code. Even a page-CSS write the MCP confirms can print NOTHING
+  (`code set_page_css` on an install with code execution restricted):
+  curl for the rule before relying on it, else park it in an element's
+  `_cssCustom` (§7).
 - When a build introduces a plugin-backed shortcode or dynamic module,
   record in the build notes (a) the file and function that DEFINE it,
   (b) which layer owns each aspect — markup/logic in PHP, presentation in

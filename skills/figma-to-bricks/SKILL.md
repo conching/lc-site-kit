@@ -165,6 +165,15 @@ tokens doc. Small-file build: the linked library's H2 and body styles sat
 well below the raw sizes every comp actually set — a bindings-only map
 would have shipped type ~25% small.
 
+**Weights by cut NAME, not number.** Figma's weight number can be the font
+file's usWeightClass, offset from the web kit's CSS weights. Record the
+Figma cut name per role and mark the weight "pending kit". At kit time, map
+CSS weight → cut from the kit's woff2 name tables, then glyph-verify one
+sample per role against the PDF before writing any weight. (Observed: a
+hosted font kit's CSS weights sat 100 below usWeightClass, so Figma
+"ExtraBold 800" was CSS 700 and "Regular 300" was CSS 200 — face-value
+numbers put most text a step or two off.)
+
 **Path B — inference fallback (flag every value `(inferred)`).** When
 bindings are unconfirmable headlessly: per-frame `get_design_context` +
 `get_screenshot`, sample computed colors/type off the render. Emit a
@@ -228,6 +237,11 @@ Per frame, top→bottom:
 - **Type as set:** per text role (H1, H2, kicker, body, button), the
   declared family/size/line-height/weight/tracking and whether the run binds
   a library style or sets raw values — the input to Phase 1's Path A check.
+  Weight is the cut name (Phase 1). For repeated rows/cards, record text
+  positions per instance from PDF glyph cap-tops (`pdftotext -bbox`), not
+  Figma box tops: a fixed-height text box pads its top, and instances drift
+  (observed on a repeated card row: a fixed-height subtitle box put its top
+  ~3px above the ink; row 1's gaps missed row 2 by ~4px).
 - **Decorative-layer sweep (added after a pilot build's round 1):** walk the
   rendered comp band and name every non-photo layer — decorative pattern
   bands, connector rails + dots/checks, accent strips, badges, watermarks,
@@ -301,6 +315,21 @@ bakes the white card behind them — for transparent icons take `rawImages`.
 rect-strip pipeline — Figma exports bake context rects (node-bounds +
 parent fills) into "transparent" exports; verify against a dark backdrop
 (checklist §2 owns the fix mechanics).
+
+**Pattern fills — recover the structure the export threw away.** A vector
+pattern or watermark over ~20 KB is usually a few glyphs repeated: cluster
+its subpaths by start-relative geometry and rebuild as `<defs>` + `<use x y>`
+(observed: a background pattern of a few hundred subpaths collapsed to a
+handful of shapes, ~100 KB → ~13 KB). A `userSpaceOnUse` gradient fill
+re-evaluates inside each `<use>`, so draw the glyphs white in a `<mask>` and
+fill one root-space rect with the gradient.
+A raster pattern fill that looks like repeated brand marks is a
+**vectorize candidate**: note which vectors of the same glyphs the file
+already holds (other pattern nodes, the logomark) before asking the
+designer for an SVG (observed: a CTA band's ~100 KB raster brand-mark fill →
+a ~3 KB tile fitted from existing glyphs). Ship either swap only after a
+pixel diff against the original — for a raster, alpha IoU plus a composited
+diff at the real opacity and scale.
 
 **The PDF-measured manifest wins on framing.** When the asset pass measures
 a placement that contradicts a Phase 2 decorative-layer note (anchor,
@@ -376,8 +405,10 @@ Deliverable: the build-plan doc — the skill's primary end product.
 - [ ] PDF-of-record path recorded per page (or its absence flagged as a
       kickoff blocker for fidelity QA).
 - [ ] Asset manifest rows marked raw-fill vs node-export; white/light
-      vectors flagged for rect-strip; inventory notes the manifest
-      contradicts are amended or marked superseded.
+      vectors flagged for rect-strip; patterns over ~20 KB deduped and raster
+      brand-mark fills flagged as vectorize candidates, each swap
+      pixel-diff-gated; inventory notes the manifest contradicts are amended
+      or marked superseded.
 - [ ] Template candidates are EXACT content dupes only; near-dupes surfaced as
       client copy decisions, not pre-unified. Components appear only as
       "component if the probe passes, else class-styled sections".
@@ -386,4 +417,6 @@ Deliverable: the build-plan doc — the skill's primary end product.
 - [ ] Build plan references REAL node-ids (from Phase 0 harvest), never
       invented ones; if node-ids were unobtainable, the plan says so and names
       the split-file / Dev-Mode unblock step.
-- [ ] Fonts resolved to family + license, or listed as an open client item.
+- [ ] Fonts resolved to family + license, or listed as an open client item;
+      weights recorded as Figma cut names, "pending kit" until name-table
+      mapped and glyph-verified.
