@@ -62,7 +62,10 @@ layout and copy probes below against the pre-write harness
 6. If a conditional mode exists (alert vs normal), fire-drill BOTH
    directions and re-run the asserts in each.
 7. Screenshot only for above-fold composition; use `zoom` region captures
-   for detail claims.
+   for detail claims. The pane screenshots only the viewport: a page-by-page
+   critique needs full-page captures (a dependency-free Chrome DevTools
+   Protocol script on system Chrome, run outside the sandbox where headless
+   Chrome hangs silently).
 8. **Environment limits** — know these before calling something broken:
    `reference/recipes.md` → "Probe environment" (frozen clocks, hidden
    panes, lazy-hidden backgrounds, transition delays, pane-click
@@ -148,3 +151,18 @@ layout and copy probes below against the pre-write harness
     and read the page's heading outline.
 14. Run the §11 fidelity pass before declaring a PAGE done.
 15. Run the §12 responsive probes before declaring a PAGE done.
+16. **SEO titles are decorated.** With Bricks native SEO (no SEO plugin),
+    Bricks appends " – <site title>" to every page title except the static
+    front page ("About Us | Example Site" rendered "… – Example Site"). Set
+    inner-page titles WITHOUT the site name and curl the served `<title>`
+    after the write; only the front page title is used verbatim.
+17. **Migrated or scraped content: assert each fetch, field by field.** A
+    scrape that "succeeds" is not complete data. Fetch detail pages, not
+    list excerpts (a list page truncated one record's hours). Fetch serially
+    or rate-limited with `curl -f --retry` and assert HTTP 200 plus a minimum
+    size per file (parallel fetches hit a 429 whose 162-byte error body had
+    curl exit 0). Parse with a classifier that reports unclassified lines
+    and a per-record missing-required-field report instead of dropping data;
+    geocode with a per-region bounding-box check and record a precision
+    field so the UI never shows false-precise distances. Report the
+    completeness table before anything is seeded.

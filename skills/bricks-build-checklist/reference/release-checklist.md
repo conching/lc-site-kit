@@ -15,6 +15,23 @@ complete. Nothing here is needed while composing a page.
   works in the user's logged-in Chrome with no user action, and avoids
   the browser `file_upload` limitation (it only accepts session-attached
   files).
+- **Large zips (> 10 MB, e.g. the 22 MB Bricks theme) on a fresh managed-host
+  app.** Two 10 MB ceilings block the REST-stage recipe: Chrome's
+  `file_upload` caps a call at 10 MB, and a fresh app ships
+  `upload_max_filesize` 10M, so WordPress answers "The link you followed
+  has expired" (the oversized POST is dropped, nonce lost). (1) Host panel →
+  app → Application Settings → PHP Settings → Advanced PHP Editor
+  (per-app, not server-wide): uncomment `php_admin_value[post_max_size]` and
+  `[upload_max_filesize]` = 64M, Save; the media screen then reads 64 MB.
+  (2) Serve the zips from a 127.0.0.1 python `http.server` subclass
+  that sends `Access-Control-Allow-Origin` for the site origin (plus
+  `Access-Control-Allow-Private-Network`), then on `theme-install.php?upload`
+  / `plugin-install.php?tab=upload`: `fetch()` the zip → `DataTransfer` →
+  `input.files` → `HTMLFormElement.prototype.submit.call(form)`. A 22 MB
+  upload takes ~20 s: poll before reading the result page. Stop the local
+  server afterwards. SSH to a shared client server is refused by the
+  auto-mode classifier (it hosts other clients' live apps): plan the Chrome
+  path from the start.
 - Legacy path: build zip OUTSIDE mounted folders (mounts block
   overwrite), copy under a NEW filename, wait ~60s for cloud sync before
   browser file_upload.
@@ -70,7 +87,22 @@ complete. Nothing here is needed while composing a page.
 
 ## New-site onboarding (connecting a site to the MCP)
 
-0. **Check whether the house already keeps a template of the finished
+0. **Does the client site carry agency branding?** The template clone
+   ships LC-branded plugins (Author: Library Creative, admin labels "LC
+   Bricks MCP"). If the site must be agency-agnostic (a side project kept
+   out of the LC Hub), do NOT clone the template: create a plain WP app and
+   install white-label forks (clone the plugin repos with the LC repo as
+   `upstream`; rebrand the visible surface only — headers, labels, REST
+   namespace, updater target, docs — and keep PHP namespaces, constants,
+   text domain and option keys so the upstream merge stays cheap). **Repoint
+   or disable the fork's self-updater before the first install**:
+   `includes/Updates/UpdateChecker.php` polls `conching/lc-bricks-mcp`
+   releases via Update URI, so a renamed fork that kept that target is
+   offered the LC build as an "update" and silently reverts the rebrand.
+   On a shared client server SSH is refused by the auto-mode classifier,
+   so plan the Chrome path from the start (see Large zips above).
+   Otherwise continue:
+   **Check whether the house already keeps a template of the finished
    setup before installing anything.** On a managed host, clone the house
    staging template app: Quick Actions → Clone App/Create Staging, same
    server, "Create as Staging" UNticked. The clone arrives with Bricks +
@@ -89,7 +121,9 @@ complete. Nothing here is needed while composing a page.
    zip and copy it into the session scratchpad so `file_upload` can read it
    (if it is rejected, use the REST-stage recipe above), then Install Now →
    Activate. Ref clicks on those two controls have silently done nothing —
-   click by coordinate and assert the resulting screen.
+   click by coordinate and assert the resulting screen. Themes or plugins
+   over 10 MB: "Large zips" above. Bricks and ACF account logins are user
+   steps (saved credentials autofill, but submitting them is not Claude's).
 2. Curl the REST index (`/wp-json/`): an empty `authentication` object =
    Application Passwords are OFF.
 3. Run the plugin's diagnostics, but do not trust its security-plugin

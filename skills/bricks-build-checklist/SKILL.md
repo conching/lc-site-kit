@@ -267,6 +267,12 @@ it.
   `null` removal is NOT uniform: it removes query/loop keys (§5) but leaves
   STYLE keys present-and-empty. Read back the EMITTED CSS after any
   deletion — the persist response describes the write, not the artifact.
+- Bricks reads most checkbox-style settings with `isset()` (`requiredAsterisk`,
+  `headerSticky`): `false` or `""` turns the feature ON. Omit the key or send
+  `null`; grep the element PHP for `isset( $settings['key'] )` when a "false"
+  setting still takes effect. Generators drop false-valued keys.
+- Never retype a stylesheet or template JSON over a few KB into a tool call:
+  `reference/recipes.md` → "Large payloads from local files".
 
 ## 5. Query-loop rules
 
@@ -317,10 +323,20 @@ it.
 - **`{acf_<name>}` resolves by field NAME across ALL groups** — a name in
   two groups renders the other group's value. List repeated names before
   wiring tags (`reference/recipes.md`); in post context use `{cf_<name>}`
-  (`{cf_<repeater>}` = row count).
-- **Templates with conditions go through `template import` with
-  `templateSettings.templateConditions`**; `template create` /
-  `template_condition set` write a key Bricks ignores (never applies).
+  (`{cf_<repeater>}` = row count). The MCP cannot write post meta: ACF
+  records go through REST (`reference/recipes.md` → "ACF records via REST").
+- **Templates with conditions:** `template create` / `template_condition
+  set` write a `conditions` key Bricks never reads (it reads
+  `templateConditions`). `template import` with `templateSettings.
+  templateConditions` writes the right key but, on 2.1.3 forks, the wrong
+  CONTENT key for header/footer (renders nothing, `verify` says 0). Until
+  the fork fix ships: `template create`, set Conditions in the builder,
+  verify with `template_condition resolve` plus a curl of the front end.
+- **GET params must not be WordPress public query vars** (`year`, `monthnum`, `day`,
+  `m`, `p`, `page`, `paged`, `name`, `pagename`, `page_id`, `s`, `cat`, `tag`,
+  `author`, `post_type`, `feed`, `order`, `orderby`, `attachment`, `preview`,
+  `embed`…): `?year=2024` 404'd as a date
+  archive. Use prefixed names (`yr`) and curl every filter URL for a 200.
 - Load More: the interaction's `loadMoreQuery` must be the LOOP ELEMENT's
   id (e.g. "rsmlc0"), never "main" — "main" silently no-ops. A working
   loadMore preserves server-side filter query vars through the AJAX
@@ -361,7 +377,9 @@ it.
   `jq '.. | objects | select(has("_hideElementFrontend"))'`);
   `verify:page`, `get_conditions` and the summary view all report the
   element as present. Un-hide with
-  `false`, not `null` (§4). "No conditions" is not "not hidden".
+  `false`, not `null` (§4). "No conditions" is not "not hidden". The hide
+  flag is SERVER-side (markup absent, crawlers never see it), which makes
+  it the tool for embargoed content: `reference/recipes.md` → "Embargo".
 - **Working additive-anchor recipe** (render-verified on a pilot build):
   `reference/recipes.md` — read before adding any in-page anchor target.
 - Element ids: exactly 6 lowercase alphanumerics; root parent must be
@@ -401,13 +419,22 @@ defaults). After `template create_from_elements`, grep the copied root's
 copies before export.
 
 - Dead paths that emit NOTHING: theme-style `general.containerWidth`,
-  `css.custom`, `h1Typography`-style heading sub-keys, root
-  `typography.font-family/size/color` (body type lives under
-  `typographyBody`), Bricks
-  global_variable entries (they're stored as AI-reference tokens only —
-  use literal hex in element CSS). Trusted paths: plugin-enqueued
-  tokens.css, element-level settings/`_cssCustom`, element
-  `_typography:<breakpoint>`.
+  `h1Typography`-style heading sub-keys, root `typography.font-family/size/
+  color` (body type lives under `typographyBody`). On forks BEFORE 2.1.2,
+  global_variable entries also emit nothing usable (use literal hex).
+  Trusted paths: plugin-enqueued tokens.css, element-level
+  settings/`_cssCustom`, element `_typography:<breakpoint>`, theme-style
+  `css.stylesheet` (below). Key map: `reference/recipes.md`.
+- **Theme-style custom CSS is `css.stylesheet`** (not `css.custom`): it
+  emits sitewide (no `<`, comments stripped), so it can hold the whole
+  component layer (`reference/recipes.md` → "Sitewide component CSS"). It
+  prints BEFORE the same theme style's control CSS (`.brxe-section`
+  padding, typography), so a class overriding a control on the same element
+  needs one more class of specificity (`.brxe-section.my-band`).
+- **`type` (`lead`) is honoured only by `text`, `heading` and `post-title`**;
+  `text-basic` ignores it. Bricks sets `blockquote` in Georgia: add
+  `blockquote{font-family:inherit}` at foundations and read the computed font
+  of any new tag. Nav/dropdown/offcanvas flex defaults: "Header" recipe.
 - **Flex key is `_direction`, NOT `_flexDirection`** — the wrong key
   silently no-ops. And `_direction` only sets `flex-direction`: a Bricks
   `div` is `display:block` by default (sections and containers are flex),
@@ -529,14 +556,19 @@ copies before export.
   paints in Times. A new Adobe kit font is
   absent from Bricks' font picker (that cache refreshes only when the
   project ID is re-saved) yet renders fine: a missing picker entry is not a
-  broken kit.
+  broken kit. Entering the project ID under Bricks → API Keys did NOT load
+  the kit on the front end; load it with a header `<link>` plus typekit
+  preconnects (no `crossorigin` on p.typekit.net) and curl for the kit CSS.
 - **Never wire anything to a token without a pre-flight** on the GENERATED
-  stylesheet — global variables AND typography-scale variables written
-  through the MCP emit doubled (`----lc-navy`, `----lc-text-h1`), so `var(--lc-navy)` resolves
-  empty (the scale's own utility classes included) and the MCP can repair
-  neither. Only palette colours emit clean vars via MCP: type sizes go in
-  literal px, other non-colour tokens in a plugin-enqueued `:root{}` (the
-  lc-core site config). Probe each path separately — one clean path proves
+  stylesheet, whatever the version. On lc-bricks-mcp < 2.1.2 (the fix
+  stores names bare) global variables AND typography-scale variables
+  emitted doubled (`----lc-navy`, `----lc-text-h1`), so `var(--lc-navy)`
+  resolved empty (the scale's own utility classes included); try
+  `global_variable repair_names` (unverified) on older installs, else use
+  literal px and a plugin-enqueued `:root{}` (the lc-core site config) for
+  non-colour tokens. On a fork >= 2.1.2 plain global variables emit clean (curl-proven);
+  typography-scale variables there are still UNTESTED. Palette colours
+  always emit clean. Probe each path separately — one clean path proves
   nothing about its siblings. `var()` works in the font-size and colour
   fields but NOT font-family. Procedure: `reference/recipes.md`.
 - **`overflow:hidden` on a section is for containing a positioned or
@@ -600,10 +632,14 @@ read-back habit stays mandatory on every path.
   30-second toggle; `set_page_scripts` then succeeds via MCP with no
   browser at all. Page CSS writes are gated the same way, but element-level
   `_cssCustom` stays writable — solve there rather than asking the client
-  to paste code. Even a page-CSS write the MCP confirms can print NOTHING
-  (`code set_page_css` on an install with code execution restricted):
-  curl for the rule before relying on it, else park it in an element's
-  `_cssCustom` (§7).
+  to paste code. With code execution restricted (`bricks get_settings` →
+  `executeCodeEnabled`), page CSS AND page scripts save and read back yet
+  print NOTHING, and enabling it for Administrator did not unblock them on
+  one install. Curl the rendered page for a unique token from the script or
+  rule before relying on either; fall back to element `_cssCustom` (§7) or
+  Bricks → Settings → Custom code → site-wide body scripts that return early
+  unless their page's elements exist. Compare with a sister site before
+  asking the user to flip a setting.
 - When a build introduces a plugin-backed shortcode or dynamic module,
   record in the build notes (a) the file and function that DEFINE it,
   (b) which layer owns each aspect — markup/logic in PHP, presentation in
@@ -624,6 +660,8 @@ Moved to `reference/fidelity-pass.md` — read before declaring any PAGE done, a
 ## 12. Responsive passes
 
 Moved to `reference/responsive-pass.md` — read before declaring any PAGE done.
+A design whose breakpoints differ from Bricks' 991/767/478 sets them at
+foundation time (same file: the Custom breakpoints toggle).
 
 ## Pre-flight (enforcement)
 

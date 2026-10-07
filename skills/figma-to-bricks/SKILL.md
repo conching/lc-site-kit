@@ -146,14 +146,17 @@ provisionally, until the as-used check below:
 | brand color/type applied site-wide | `theme_style` |
 | repeated utility patterns (eyebrow, section-header) | `global_class` |
 
-**Only palette colours are a proven var path.** Before lc-bricks-mcp 2.1.2,
-`global_variable` AND `typography_scale` store names with a leading `--`,
-Bricks emits `----name`, and every `var(--name)` resolves empty (observed
-on a fresh 2.1.1 install). Map the type ramp to `typography_scale` and raw
-tokens to `global_variable` only where the site runs ≥ 2.1.2; otherwise the
-tokens doc gives type sizes as literal px and non-colour tokens as a
-`:root{}` block in the lc-core site-config inline style. The checklist §7
-emitted-CSS probe decides either way — a success response is not evidence.
+**Version-gate the var path.** Before lc-bricks-mcp 2.1.2, `global_variable`
+AND `typography_scale` store names with a leading `--`, Bricks emits
+`----name`, and every `var(--name)` resolves empty (observed on a fresh 2.1.1
+install); only palette colours were safe. On forks ≥ 2.1.2 `global_variable`
+emits clean `--name` (confirmed by curl on a 2.1.3 fork); `typography_scale`
+is still unverified there, so probe it before mapping the type ramp to it.
+Where the site runs < 2.1.2, or the probe fails, the tokens doc gives type
+sizes as literal px and non-colour tokens as a `:root{}` block in the lc-core
+site-config inline style, or in theme_style `css.stylesheet` (see tokens.css
+conventions). The checklist §7 emitted-CSS probe decides either way — a
+success response is not evidence.
 
 **Check Path A against the comps before it seeds anything.** A variable
 that exists is not one that's used. After Phase 2, compute the text-run
@@ -200,6 +203,12 @@ intentional per-design deviation, OMIT the class and set typography on the
 element (deviation = opting out, not fighting the class). This is
 bricks-build-checklist rule 7 — state it so the token doc doesn't fight it,
 don't re-teach it.
+
+**Sitewide component CSS.** When the plan carries sitewide component rules
+(buttons, focus states, surface classes), name the layer: theme_style
+`styles.css.stylesheet` emits sitewide (no `<`, comments stripped), so a
+versioned master file can live there without a plugin. The key is
+`stylesheet`, not `custom`.
 
 Deliverable: tokens doc (every value source-tagged, conflicts listed as
 designer questions, Path A binding rate recorded) + tokens.css mapping
@@ -381,6 +390,12 @@ the same shape (adapt the structure to the project). Include:
   responsive is DESIGNED AT BUILD TIME, not translated — flag as the top
   schedule risk and get client sign-off. (The pilot build is desktop-only,
   ~1440px.)
+- **Breakpoints:** when the design's breakpoints differ from the Bricks
+  defaults (991/767/478), plan them at foundation time, before any
+  responsive settings exist. Bricks ignores edited widths until Settings →
+  General → Custom breakpoints is on, and the MCP has no write path (read-only
+  `bricks:get_breakpoints`), so list it as a manual step and verify with a
+  one-element media-query probe.
 - Handoff line, verbatim intent: *page builds run under bricks-build-checklist
   rules, verified with lc-bricks-mcp `verify:page` / `verify:orphaned_css`,
   and each page passes the checklist §11 Design Fidelity Pass against its
@@ -400,8 +415,11 @@ Deliverable: the build-plan doc — the skill's primary end product.
       recorded); a library the comps don't use is a designer question, not
       the build scale.
 - [ ] Var-backed tokens mapped only to paths that emit clean vars on the
-      site's lc-bricks-mcp (palette colours always; `typography_scale` /
-      `global_variable` only on ≥ 2.1.2) — else literal px / lc-core `:root{}`.
+      site's lc-bricks-mcp (palette colours always; `global_variable` on
+      ≥ 2.1.2; `typography_scale` only after its own emitted-CSS probe) —
+      else literal px / lc-core `:root{}` / theme_style `css.stylesheet`.
+- [ ] Design breakpoints that differ from 991/767/478 planned at foundation
+      time with the Custom breakpoints toggle named as a manual step.
 - [ ] PDF-of-record path recorded per page (or its absence flagged as a
       kickoff blocker for fidelity QA).
 - [ ] Asset manifest rows marked raw-fill vs node-export; white/light

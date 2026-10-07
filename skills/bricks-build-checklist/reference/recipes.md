@@ -290,16 +290,22 @@ JS for the visuals, only for persistence:
 Before committing to wire anything to a design token:
 
 1. Fetch the GENERATED stylesheet and list which custom properties are
-   ACTUALLY emitted and under what exact names. Global variables AND
-   typography-scale variables written through the MCP are stored with
-   their leading `--` and emit
-   with a doubled prefix (`----lc-navy`, `:root{----lc-text-h1:56px}`)
-   because the generator prepends its own, so `var(--lc-navy)` resolves
-   to empty. The API cannot repair either — a variable name sent without
-   dashes comes back normalized with them re-added (the fix is reachable
-   only through the builder UI), and a scale prefix without `--` is
-   rejected. A scale-created success response is not evidence; curl the
-   emitted CSS for each path.
+   ACTUALLY emitted and under what exact names. **Version gate:** on
+   lc-bricks-mcp < 2.1.2 (and any site not yet updated), global variables
+   AND typography-scale variables written through the MCP are stored with
+   their leading `--` and emit with a doubled prefix (`----lc-navy`,
+   `:root{----lc-text-h1:56px}`) because the generator prepends its own, so
+   `var(--lc-navy)` resolves to empty. There the API could not repair
+   either — a variable name sent without dashes comes back normalized with
+   them re-added, and a scale prefix without `--` is rejected; try
+   `global_variable repair_names` (unverified) and curl to confirm;
+   otherwise rename in the builder UI, the only route proven to work.
+   On a fork carrying the 2.1.2 fix (names stored bare) a batch of plain
+   global variables emitted `:root{--lc-content-width:1170px;…}` with one
+   prefix, curl-verified on Bricks 2.4.2. Typography-scale variables on a
+   fixed fork are still UNTESTED: probe them separately. Either way, a
+   scale-created success response is not evidence; curl the emitted CSS for
+   each path.
 2. Grep for existing `var(` consumers to learn which layer is real. A site
    can carry three layers with different fates: a colour palette that emits
    usable properties, and a typography scale and global variables whose
@@ -360,3 +366,125 @@ post context, or give the fields group-prefixed names at design time. A
 repeater tag `{acf_<repeater>}` is not a tag outside its loop; `{cf_<repeater>}`
 returns the row count. Sanity-check the script against a pair you know
 collides before trusting a clean result.
+
+## Theme-style key map and sitewide component CSS (§7)
+
+Theme-style keys confirmed from Bricks 2.4.2 source and by curl (group →
+control key; the selector column is filled only where it was recorded):
+
+| Group | Control key | Emits |
+|---|---|---|
+| typography | `typographyBody` | the body rule (root `typography.font-family/size/color` emit nothing) |
+| typography | `typographyHeadingH1` … `typographyHeadingH6` | heading tag rules |
+| typography | `typographyLead` | `.bricks-type-lead` (needs a `text`/`heading`/`post-title` element with `type:"lead"`; `text-basic` ignores `type`) |
+| typography | `typographyHero` | the hero text type |
+| section | `padding` | `.brxe-section{padding…}` |
+| container | `width` / `widthMax` | container width rules (`general.containerWidth` is dead) |
+| css | `stylesheet` | custom CSS, printed sitewide (`css.custom` is not a Bricks control) |
+
+**Sitewide component CSS without a plugin.** `theme_style update` with
+`styles.css.stylesheet` served a 42-rule layer verbatim (buttons with
+hover/disabled states, `:focus-visible`, surface-inversion classes,
+reduced-motion) and a 44 KB one later; comments are stripped on output and
+`<` is not allowed. Procedure:
+
+1. Keep the component CSS in ONE local master file and resend it WHOLE on
+   every change (the update replaces the value; push it by the file route
+   under "Large payloads from local files").
+2. Register the classes as a name-only registry (`global_class batch_create`
+   with a per-item category and no styles): they render their class names
+   and give editors a picker entry. `global_class update` rejects
+   `styles: {}`, so clearing a class's styles means delete + recreate (new
+   id; re-point `_cssGlobalClasses` consumers).
+3. Verify by line-diffing the served HTML against the master file, then probe
+   real hover and Tab focus for the states.
+4. **Emit order:** the stylesheet prints BEFORE the same theme style's own
+   control CSS, so `.lc-alert-page{padding-top:56px}` rendered 120px when
+   `section.padding` emitted `.brxe-section{padding…}` later at 0-1-0. A
+   class that overrides a control on the same element carries one more
+   class (`.brxe-section.lc-alert-page`, 0-2-0); probe the computed value
+   once whenever a band sets its own padding.
+5. The update response echoes the whole settings object twice (~55k chars for
+   a 14k stylesheet) and spills to a file on every resend: read the file
+   route's short summary instead.
+
+## Large payloads from local files (§4)
+
+Never retype a stylesheet or template JSON larger than a few KB into a tool
+call: 44 KB cost ~13k output tokens and a transcription risk on every fix.
+The plugin's REST MCP route accepts the logged-in wp-admin cookie plus a
+REST nonce (`admin-ajax.php?action=rest-nonce`), so in Claude in Chrome:
+
+1. On any wp-admin page, inject a file input and `file_upload` the local
+   file into it (the tool caps one call at 10 MB; larger files:
+   `reference/release-checklist.md` → "Large zips").
+2. Read it with `File.text()` and POST a JSON-RPC `tools/call` to the
+   plugin's REST MCP route under `/wp-json/<plugin-namespace>/v1/` (same
+   route shape on every lc-bricks-mcp fork; a white-label fork renames the
+   namespace, so read it from `/wp-json/`).
+3. Return only a short summary (ids, counts, `isError`) and verify by
+   diffing the served HTML against the local file. One loop imported 10
+   section templates this way.
+
+## ACF records via REST (§5)
+
+The MCP has no post-meta write, and the block editor's Save stays disabled
+when only an ACF meta-box field changed. From any logged-in wp-admin tab:
+
+1. Check the field group is exposed: `GET /wp/v2/<cpt>/<id>?_fields=acf`.
+2. Create or update with `wp.apiFetch({path:'/wp/v2/<cpt>',method:'POST',
+   data:{…, acf:{…}}})` (the group needs `show_in_rest`); set alt text with
+   `POST /wp/v2/media/<id>`. (Fallback:
+   `wp.data.dispatch('core/editor').savePost()` also flushes meta boxes.)
+3. Upload files through `media-new.php?browser-uploader`: `file_upload` onto
+   `#async-upload`, then click `#html-upload` (the plupload input is listed
+   first and silently takes nothing).
+4. REST writes do not purge the page cache: purge it (Breeze: admin-bar menu
+   → Purge All Cache) and verify the PLAIN URL — a cache-buster bypasses the
+   cache and reported success while visitors saw the stale page.
+
+## Embargo / hide until launch (§6)
+
+`_hideElementFrontend: true` is rendered server-side: the markup is absent
+(curl-proven, siblings intact), so crawlers never see it, and the client
+reverses it with the eye toggle in the builder structure panel.
+
+1. Sweep the served HTML of ALL pages for the term, including CMS posts and
+   loops (a news post announcing the embargoed item would have become 404
+   links).
+2. Hide elements with `element update {"_hideElementFrontend": true}` and
+   curl that the markup is gone.
+3. Write compensating layout CSS keyed on the hidden element's ABSENCE with
+   `:has()`: `#brxe-ROW:not(:has(#brxe-CARD)) …`, or
+   `#brx-content:not(:has(#brxe-SECTION)) #brxe-NEXT{padding-top:72px}`.
+   Un-hiding then restores the layout with no second edit.
+4. Page/post → draft (404, out of the core sitemap); curl the plain URL, a
+   busted one and guessed slugs for 404 with no redirect.
+5. Guard loops that may go empty: an element condition `{"key":"dynamic_data",
+   "compare":">","value":"0","dynamic_data":"{query_results_count:LOOPID}"}`
+   on the PARENT SECTION renders at 1 result and omits at 0 (no blank band).
+6. Record the un-hide list for announcement day.
+
+## Header and drawer defaults (§7)
+
+Measure the live header before styling a native composite (nav-nested,
+dropdown, offcanvas); defaults differ from what the class name suggests:
+
+- A `dropdown` li is `flex-direction:column`, so its label sits ~16px above
+  sibling links: set it to `row`. The chevron is the only button; stretch
+  it with `button::after{inset:0}` so the whole label is the trigger.
+- `.brx-nav-nested-items` has a ~30px default gap that opens gaps between
+  drawer rows: set the drawer ul gap to 0.
+- The offcanvas inner `block` defaults to `align-items:flex-start` (rows
+  shrink-wrap to ~207px) and `flex-wrap:wrap` (tall accordion content wraps
+  into a second column and the drawer scrolls sideways): set
+  `align-items:stretch`, `flex-wrap:nowrap`, and `min-height:0` on the
+  scrolling child.
+- A button-class element hidden by a utility loses to `body .lc-btn
+  {display:inline-flex}` (0-1-1 vs 0-1-0): use `body`-prefixed selectors.
+- A linked `image` renders `a.brxe-image > img`.
+- Bricks' sticky header toggles `.scrolling` at scrollY > 0 with no offset
+  setting; compaction after N px = a fixed-height slot wrapper plus a class
+  toggled from the slot's rect (custom JS), not Bricks sticky.
+- Measure 1024 explicitly: a 6-item nav + logo + search + CTA designed at
+  1440 did not fit.

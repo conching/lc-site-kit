@@ -2,6 +2,17 @@
 
 Read before declaring any PAGE done.
 
+**Breakpoints that differ from the Bricks defaults are set at foundation
+time**, before any responsive settings exist. A saved width is NOT an active
+one: Bricks serves the defaults whenever Bricks → Settings → General →
+**Custom breakpoints** (`customBreakpoints`) is off, even though the edited
+width is stored (an AJAX `bricks_update_breakpoints` call returned
+`updated:true` while `get_breakpoints` still said 991). The MCP has no
+breakpoint write (`bricks:get_breakpoints` is read-only), so set the widths
+in the builder, tick the toggle, then verify with a one-element media-query
+probe (a tablet-only setting emitted `@media (max-width: 1023px)` once 1023
+was live).
+
 Bricks-native breakpoints are **991 / 767 / 478**. Breakpoint-suffixed
 element settings (`_padding:tablet_portrait`, `_typography:mobile_landscape`)
 emit at exactly those widths and compose cleanly with handwritten
