@@ -22,6 +22,12 @@ layout and copy probes below against the pre-write harness
    trigger the `save_post` purge, wait ~15 s, re-fetch. Note per host which
    writes purge (one managed host: post save yes, element/meta writes no). Never
    declare a production edit done on a cache-busted fetch alone.
+   Check the BUSIEST page (usually Home), not just the page you edited:
+   `curl -sI` the plain URL, read `x-nananana` / `x-ac` / `age` /
+   `cf-cache-status`, and `grep -o` the changed element's class or id in the
+   body. Pages cache independently (an Atomic host served the edited /about/
+   fresh while Home still sent the old button with Batcache + edge HIT). If
+   cached, poll until it flips or purge, and report the delay.
    STAGING has the same trap (a server-level Varnish plus a page-cache
    plugin; template writes through the MCP purge neither). After any write,
    request the page TWICE — with and without the cache-buster — and compare
@@ -66,6 +72,20 @@ layout and copy probes below against the pre-write harness
    critique needs full-page captures (a dependency-free Chrome DevTools
    Protocol script on system Chrome, run outside the sandbox where headless
    Chrome hangs silently).
+   **A full-page capture is static-layout evidence only.** It emulates a
+   viewport as tall as the page, so a `position:fixed` bar paints near the top
+   and looks like a layout bug (it sat correctly at the bottom of a real
+   375x812 viewport), and `sticky` / IntersectionObserver-driven state never
+   resolves. Check those in a normal-height viewport (pane resize plus a JS
+   state read, or an element capture); crop with the element-capture tool,
+   not `sips --cropOffset` (it ignored the offset).
+   **Narrow renders:** `chrome --headless --window-size` cannot go below
+   ~500px (the layout ran at 500 while the PNG was cropped to 390). Use CDP
+   `Emulation.setDeviceMetricsOverride` (the capture tool). A local harness
+   must also carry `<meta name=viewport content="width=device-width">`
+   (without it mobile emulation lays out at 980px), the `:root` tokens copied
+   from the SERVED page (Bricks defines colour tokens outside the component
+   stylesheet) and `box-sizing:border-box`, or it manufactures defects.
 8. **Environment limits** — know these before calling something broken:
    `reference/recipes.md` → "Probe environment" (frozen clocks, hidden
    panes, lazy-hidden backgrounds, transition delays, pane-click

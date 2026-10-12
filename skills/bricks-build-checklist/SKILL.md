@@ -398,6 +398,9 @@ it.
   class is invisible to `verify:orphaned_css` (a skipped element has no
   dead CSS) — find it by grepping the served page for each literal anchor
   id, or by clicking every in-page `href="#…"` link.
+- **`page create` / `update_meta` take no `parent` (or `menu_order`)** — set
+  slug + parent over WP REST in the same authenticated push: `reference/recipes.md`
+  → "Child pages: parent and slug".
 
 ## 7. CSS layering + layout facts
 
@@ -473,6 +476,15 @@ copies before export.
   PARENT's `align-items` — a column-flex parent with `flex-start` shrink-
   wraps each row to content width and space-between has nothing to
   distribute (observed on a pilot-build footer). Fix the parent (`stretch`), not the row.
+- **A negative `text-indent` shrinks a shrink-wrapped flex item's
+  max-content width** (an inline-flex tag inside wraps with room to spare):
+  hanging-indent lines get `align-self:stretch`; probe the longest chip label.
+- **A component's layout rules need a context selector at least as specific
+  as any pattern rule it can share an element with** (`.lc-map-ph{display:
+  flex}` lost to `.lc-split-media .lc-split-img{display:block}`): write
+  `.lc-split-media .lc-map-ph{…}`.
+- **Content-driven bands:** shortcodes print nothing when empty; CSS `:has()`
+  quantity queries drive visibility and columns (`reference/recipes.md`).
 - Element/page CSS loads AFTER plugin tokens.css. tokens rules need
   `!important` to beat later element rules; an element's own `!important`
   ties and wins by load order — fix those at source.

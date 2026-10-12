@@ -424,7 +424,22 @@ REST nonce (`admin-ajax.php?action=rest-nonce`), so in Claude in Chrome:
    namespace, so read it from `/wp-json/`).
 3. Return only a short summary (ids, counts, `isError`) and verify by
    diffing the served HTML against the local file. One loop imported 10
-   section templates this way.
+   section templates this way. Never return a raw MCP reply from in-page JS:
+   the Chrome output filter swallowed a `page create` reply whole; extract
+   just the id with a regex in-page.
+
+## Child pages: parent and slug (§6)
+
+The `page` tool's `create` / `update_meta` set no `parent` (or `menu_order`),
+and `create` ignores `slug`. In the same cookie-authenticated Chrome push
+that called the MCP route, follow up over core REST with the nonce:
+`POST /wp-json/wp/v2/pages/<id>` `{slug, parent}` (add `menu_order` if
+needed). Assert the 200 reply's `link` path is the nested one
+(`/parent/child/`), and set slug and parent in ONE request so the slug
+is made unique under the final parent (otherwise `-2`). Re-parenting a
+published page changes its URL and creates no redirect: purge the cache and
+fetch the plain URL. (Fork feature gap: `page` create/update_meta should
+accept `parent` and `menu_order`.)
 
 ## ACF records via REST (§5)
 
@@ -436,12 +451,34 @@ when only an ACF meta-box field changed. From any logged-in wp-admin tab:
    data:{…, acf:{…}}})` (the group needs `show_in_rest`); set alt text with
    `POST /wp/v2/media/<id>`. (Fallback:
    `wp.data.dispatch('core/editor').savePost()` also flushes meta boxes.)
+   **Changing ONE field on an existing record: send the WHOLE `acf` object.**
+   REST validates the object, not the delta: `{acf:{featured:true}}`
+   returned 400 `rest_property_required` (`item_type` is a required
+   property of acf) when the group has required fields. `GET
+   ?context=edit&_fields=acf`, merge the one change, drop the `null`
+   image/file fields, POST the full object, and assert the returned `acf`
+   shows the change and the other fields are unchanged.
 3. Upload files through `media-new.php?browser-uploader`: `file_upload` onto
    `#async-upload`, then click `#html-upload` (the plupload input is listed
    first and silently takes nothing).
 4. REST writes do not purge the page cache: purge it (Breeze: admin-bar menu
    → Purge All Cache) and verify the PLAIN URL — a cache-buster bypasses the
    cache and reported success while visitors saw the stale page.
+
+## Content-driven bands (§7)
+
+When the markup already carries the signal (how many cards printed), let CSS
+decide the band state instead of a plugin option. The shortcode prints
+NOTHING at zero results (no empty wrapper), then:
+
+- Hide at 0: `.lc-cards--stories:not(:has(.lc-card--news)){display:none}`.
+- Column count by quantity: `.grid:not(:has(>:nth-child(3))){…2-up…}` (fewer
+  than 3 children); a 3-item steps list in a 4-column grid is the same trick.
+- Flip the NEXT band's background with a sibling rule keyed on the same
+  absence, so two neighbours never end up the same colour.
+- Scope column overrides to desktop (`@media (min-width:992px)`) so the
+  tablet/phone rules keep precedence. The embargo recipe below uses the same
+  `:has()` absence pattern.
 
 ## Embargo / hide until launch (§6)
 
